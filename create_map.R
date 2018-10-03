@@ -1,93 +1,201 @@
-library(rgdal)
-library(leaflet)
-library(maptools)
-library(gpclib)
-library(rgeos)
 library(gdata)
 library(dplyr)
-# clean data
+library(rgdal)
+library(maptools)
+library(gpclib)
+library(leaflet)
 
+# \
+# > Functions
+# /
 
-TidyStruct <- function(data) {
-    data$election.district.name <- as.factor(as.character(data$election.district.name))
+# mutate column types from input
+MutateType <- function(data) {
+  if ("district.id" %in% names(data)) {
+    data$district.id <- as.numeric(data$district.id)
+  }
+  if ("district.name" %in% names(data)) {
+    data$district.name <- as.factor(as.character(data$district.name))
+  }
+  if ("votes" %in% names(data)) {
     data$votes <- as.numeric(as.character(data$votes))
+  }
+  if ("percentage" %in% names(data)) {
     data$percentage <- as.numeric(as.character(data$percentage))
-    data$political.interest.code <- as.factor(as.character(data$political.interest.code))
-    data$candidate.name <- as.character(data$candidate.name)
-    return(data)
+  }
+  if ("party" %in% names(data)) {
+    data$party <- as.factor(as.character(data$party))
+  }
+  if ("candidate" %in% names(data)) {
+    data$candidate <- as.character(data$candidate)
+  }
+  return(data)
 }
 
-result <- data.frame()
+# \
+# > Download Data
+# /
 
-for (i in 1:124) {
+# data downloaded from www.elections.on.ca
+url.result <- "https://www.elections.on.ca/content/dam/NGW/sitecontent/2018/results/Valid%20Votes%20Cast%20for%20Each%20Candidate%20-%202018%20General%20Election%20-%20Excel.zip"
+url.shape <- "https://www.elections.on.ca/content/dam/NGW/sitecontent/2017/preo/shapefiles/Polling%20Division%20Shapefile%20-%202018%20General%20Election.zip"
+# check file existence, create dir and download from urls
+if (!file.exists("./result")) {
+  dir.create("./result")
+}
+if (!file.exists("./shape")) {
+  dir.create("./shape")
+}
+if (!file.exists("./result/result.zip")) {
+  download.file(url.result, "./result/result.zip")
+}
+if (!file.exists("./shape/shape.zip")) {
+  download.file(url.shape, "./shape/shape.zip")
+}
+# unzip the files
+unzip("./result/result.zip", exdir = "./result", junkpaths = T)
+unzip("./shape/shape.zip", exdir = "./shape", junkpaths = T)
+
+# \
+# > Tidy Data
+# /
+
+# loop reading files, select certain rows and columns and combine results
+# tmp is retained to reduce rerunning time
+result <- data.frame()
+if (!exists("tmp")) {
+  for (i in 1:124) {
     ed.id <- formatC(i, width = 3, format = "d", flag = "0")
     file.prefix <- "result/Summary of Valid Votes Cast for Each Candidate - ED"
     file.path <- paste0(file.prefix, ed.id, ".xls")
-    data <- read.xls(file.path)
-    ed.name <- data[4,1]
-    data <- data[-c(4,5),]
-    data <- data[3:dim(data)[1], 5:8]
-    data <- cbind(i, ed.name, data)
-    result <- rbind(result, data)
+    tmp <- read.xls(file.path)
+    ed.name <- tmp[4, 1]
+    tmp <- tmp[-c(4, 5), ]
+    tmp <- tmp[3:dim(tmp)[1], 5:8]
+    tmp <- cbind(i, ed.name, tmp)
+    result <- rbind(result, tmp)
+  }
+} else {
+  result <- tmp
 }
-
-col.names <- c("election.district.id", "election.district.name", "votes", "percentage", "political.interest.code", "candidate.name")
+tmp <- result
+# name columns
+col.names <- c("district.id", "district.name", "votes", "percentage", "party", "candidate")
 names(result) <- col.names
-result <- TidyStruct(result)
+# mutate type and order by district.name ascending and vote descending
+result <- MutateType(result)
+result <- result[order(result$district.name, -result$votes), ]
+# get winning party data in each district
+result.win <- group_by(result, district.id) %>%
+  summarize(
+    first(district.name),
+    first(votes),
+    first(percentage),
+    first(party),
+    first(candidate)
+  )
+names(result.win) <- col.names
+# order result.win by district.name ascending and vote descending
+result.win <- result.win[order(result.win$district.name, -result.win$votes), ]
 
-result.win <- group_by(result, election.district.id)
-result.win <- summarize(result.win, first(election.district.name), first(votes), first(percentage), first(political.interest.code), first(candidate.name))
+# \
+# > Shapes and Polygons
+# /
 
-
-
-# ogrListLayers("shape/POLLING_DIVISION.shp")
-
-# read shape
+# read shapefile
 ed.shape <- readOGR("shape/POLLING_DIVISION.shp", layer = "POLLING_DIVISION")
-ed.shape$ED_ID <- factor(ed.shape$ED_ID)
-# correct projection
-proj <- sp::CRS('+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0')
+# get district.name from result.win according to ed.shape$ED_ID
+ed.shape$district.name <- result.win$district.name[match(ed.shape$ED_ID, result.win$district.id)]
+# default projection needs to be corrected in order to display polygons properly
+proj <- sp::CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 ed.shape <- sp::spTransform(ed.shape, proj)
-# union polygons
+# sometimes this permit needs to be enabled to perform unionSpatialPolygons(...)
 gpclibPermit()
-ed.shape.poly <- unionSpatialPolygons(ed.shape, ed.shape$ED_ID)
-
-leaflet(ed.shape.poly[2]) %>%
-    addPolygons()
-    
-# get data
+# merge polygons in the same district
+# this function coerces IDs into characters by default, numeric num causes incorrect order
+ed.shape.poly <- unionSpatialPolygons(ed.shape, ed.shape$district.name)
+# get data out of shape file
 ed.shape.data <- data.frame(ed.shape)
-ed.shape.data <- unique(ed.shape.data[, c(2,5)])
+# acquire unique district id and assign row names
+ed.shape.data <- unique(ed.shape.data[2])
 row.names(ed.shape.data) <- as.character(1:dim(ed.shape.data)[1])
-# combine data
-names(ed.shape.data) <- c("election.district.id", "election.district.name")
-ed.shape.data <- right_join(result.win, ed.shape.data, by = "election.district.id")[,-7]
-names(ed.shape.data) <- col.names
-ed.shape.data <- TidyStruct(ed.shape.data)
-# combine data and shape
-ed.shape <- SpatialPolygonsDataFrame(ed.shape.poly, ed.shape.data)
+# join result.win into ed.shape.data according to district.id
+names(ed.shape.data) <- c("district.id")
+ed.shape.data <- right_join(result.win, ed.shape.data, by = "district.id")
+# mutate data type to get rid of redundant factor levels and order only by district.name
+ed.shape.data <- MutateType(ed.shape.data)
+ed.shape.data <- ed.shape.data[order(ed.shape.data$district.name), ]
+# combine merged polygons and data into shape object
+ed.shape <- SpatialPolygonsDataFrame(ed.shape.poly, ed.shape.data, match.ID = F)
+# mutate data type to get rid of redundant factor levels
+ed.shape <- MutateType(ed.shape)
 
+# \
+# > Visualization
+# /
+
+# create color options
 pal <- colorFactor(
-    palette = c("green", "red", "orange", "blue"),
-    domain = ed.shape$political.interest.code
+  palette = c("green", "red", "orange", "blue"),
+  domain = ed.shape$party
 )
-leaflet(ed.shape) %>%
-    addPolygons(color = "#444444", weight = 1, smoothFactor = 0.5,
-              opacity = 1.0, fillOpacity = 0.5,
-              fillColor = ~pal(political.interest.code), 
-              popup = paste("ID", ed.shape$election.district.id, "<br>",
-                            "Region:", ed.shape$election.district.name, "<br>",
-                            "Party:", ed.shape$political.interest.code, "<br>",
-                            "Candidate:", ed.shape$candidate.name, "<br>",
-                            "Votes:", ed.shape$votes, "<br>",
-                            "Percentage:", ed.shape$percentage),
-              highlightOptions = highlightOptions(color = "white", weight = 2,
-                                                  bringToFront = TRUE)) %>%
-    addLegend(position = "topright",
-              pal = pal, values = ~political.interest.code,
-              title = "Party",
-              opacity = 0.5
+# prepare popups, arrange the table according to the district.id order in result
+party.num <- table(result$district.id)[unique(result$district.id)]
+# loop through each district, get all party info and put them in html table
+popup <- vector()
+for (i in 1:124) {
+  popup[i] <- paste(
+    "Riding:", result.win$district.name[i], "<br> <br>",
+    "<table>
+    <tr>
+    <th> Party </th>
+    <th> Candidate </th>
+    <th> Votes </th>
+    <th align=\"right\"> % </th>
+    </tr>"
+  )
+  for (j in 1:party.num[i]) {
+    index <- sum(party.num[0:(i - 1)]) + j
+    if (j == 1) {
+      td.s <- "<td> <font color=\"red\">"
+      td.sr <- "<td align=\"right\"> <font color=\"red\">"
+      td.c <- "</font> </td>"
+    } else {
+      td.s <- "<td>"
+      td.sr <- "<td align=\"right\">"
+      td.c <- "</td>"
+    }
+    popup[i] <- paste(
+      popup[i],
+      "<tr>",
+      td.s, result[index, 5], td.c,
+      td.s, result[index, 6], td.c,
+      td.s, result[index, 3], td.c,
+      td.sr, formatC(result[index, 4], digit = 1, format = "f"), td.c,
+      "</tr>"
     )
-
-
-
+    if (j == 1) {
+      popup[i] <- paste(popup[i], "</i>")
+    }
+  }
+  popup[i] <- paste(popup[i], "</table>")
+}
+# visulization using leaflet
+leaflet(ed.shape) %>%
+  addTiles() %>%
+  addPolygons(
+    color = "#404040", weight = 0.5, smoothFactor = 1,
+    opacity = 1, fillOpacity = ~percentage / 100,
+    fillColor = ~pal(party),
+    popup = popup, label = ~district.name,
+    highlightOptions = highlightOptions(
+      color = "white", weight = 2,
+      bringToFront = T
+    )
+  ) %>%
+  addLegend(
+    position = "topright",
+    pal = pal, values = ~party,
+    title = "Party",
+    opacity = 0.5
+  )

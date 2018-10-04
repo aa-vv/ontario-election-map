@@ -184,13 +184,11 @@ for (i in 1:124) {
 leaflet(ed.shape) %>%
   addTiles() %>%
   addPolygons(
-    color = "#404040", weight = 0.5, smoothFactor = 1,
-    opacity = 1, fillOpacity = ~percentage / 100,
-    fillColor = ~pal(party),
+    color = "#404040", weight = 0.5, smoothFactor = 0.75, opacity = 1,
+    fillOpacity = ~percentage / 100, fillColor = ~pal(party),
     popup = popup, label = ~district.name,
     highlightOptions = highlightOptions(
-      color = "white", weight = 2,
-      bringToFront = T
+      color = "white", weight = 2, bringToFront = T
     )
   ) %>%
   addLegend(

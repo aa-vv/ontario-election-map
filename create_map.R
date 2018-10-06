@@ -1,3 +1,4 @@
+library(tools)
 library(gdata)
 library(dplyr)
 library(rgdal)
@@ -5,32 +6,7 @@ library(maptools)
 library(gpclib)
 library(leaflet)
 
-# \
-# > Functions
-# /
-
-# mutate column types from input
-MutateType <- function(data) {
-  if ("district.id" %in% names(data)) {
-    data$district.id <- as.numeric(data$district.id)
-  }
-  if ("district.name" %in% names(data)) {
-    data$district.name <- as.factor(as.character(data$district.name))
-  }
-  if ("votes" %in% names(data)) {
-    data$votes <- as.numeric(as.character(data$votes))
-  }
-  if ("percentage" %in% names(data)) {
-    data$percentage <- as.numeric(as.character(data$percentage))
-  }
-  if ("party" %in% names(data)) {
-    data$party <- as.factor(as.character(data$party))
-  }
-  if ("candidate" %in% names(data)) {
-    data$candidate <- as.character(data$candidate)
-  }
-  return(data)
-}
+source("./functions.R")
 
 # \
 # > Download Data
@@ -83,8 +59,11 @@ tmp <- result
 col.names <- c("district.id", "district.name", "votes", "percentage", "party", "candidate")
 names(result) <- col.names
 # mutate type and order by district.name ascending and vote descending
-result <- MutateType(result)
+result <- mutateType(result)
 result <- result[order(result$district.name, -result$votes), ]
+# convert latin character and standardize name display
+result$district.name <- iconv(gsub("—", " - ", result$district.name), "latin1", "UTF-8")
+result$candidate <- sapply(iconv(result$candidate, "latin1", "UTF-8"), function(x) toTitleCase(tolower(x)))
 # get winning party data in each district
 result.win <- group_by(result, district.id) %>%
   summarize(
@@ -114,6 +93,14 @@ gpclibPermit()
 # merge polygons in the same district
 # this function coerces IDs into characters by default, numeric num causes incorrect order
 ed.shape.poly <- unionSpatialPolygons(ed.shape, ed.shape$district.name)
+# extract outer polygons
+ed.shape.poly <- spExtract(ed.shape.poly, 1)
+# check if the polygons contain each other
+relation <- spRelation(ed.shape.poly)
+# substract contained polygon from its container
+ed.shape.poly <- spDifference(ed.shape.poly, relation$inner, relation$outer)
+# fix silvers by expanding the edge
+ed.shape.poly <- spFix(ed.shape.poly, 88, 3e-4)
 # get data out of shape file
 ed.shape.data <- data.frame(ed.shape)
 # acquire unique district id and assign row names
@@ -123,12 +110,12 @@ row.names(ed.shape.data) <- as.character(1:dim(ed.shape.data)[1])
 names(ed.shape.data) <- c("district.id")
 ed.shape.data <- right_join(result.win, ed.shape.data, by = "district.id")
 # mutate data type to get rid of redundant factor levels and order only by district.name
-ed.shape.data <- MutateType(ed.shape.data)
+ed.shape.data <- mutateType(ed.shape.data)
 ed.shape.data <- ed.shape.data[order(ed.shape.data$district.name), ]
 # combine merged polygons and data into shape object
 ed.shape <- SpatialPolygonsDataFrame(ed.shape.poly, ed.shape.data, match.ID = F)
 # mutate data type to get rid of redundant factor levels
-ed.shape <- MutateType(ed.shape)
+ed.shape <- mutateType(ed.shape)
 
 # \
 # > Visualization
@@ -145,8 +132,9 @@ party.num <- table(result$district.id)[unique(result$district.id)]
 popup <- vector()
 for (i in 1:124) {
   popup[i] <- paste(
-    "Riding:", result.win$district.name[i], "<br> <br>",
-    "<table>
+    "Riding", result.win$district.id[i], ":", 
+    result.win$district.name[i], "<br> <br>",
+    "<table style=\"width:100%\">
     <tr>
     <th> Party </th>
     <th> Candidate </th>
@@ -184,7 +172,7 @@ for (i in 1:124) {
 leaflet(ed.shape) %>%
   addTiles() %>%
   addPolygons(
-    color = "#404040", weight = 0.5, smoothFactor = 0.75, opacity = 1,
+    color = "#404040", weight = 0.5, smoothFactor = 0.99, opacity = 1,
     fillOpacity = ~percentage / 100, fillColor = ~pal(party),
     popup = popup, label = ~district.name,
     highlightOptions = highlightOptions(

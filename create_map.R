@@ -138,27 +138,27 @@ for (i in 1:124) {
     <tr>
     <th align=\"left\"> Party </th>
     <th align=\"left\"> Candidate </th>
-    <th align=\"left\"> Votes </th>
+    <th align=\"right\"> Votes </th>
     <th align=\"right\"> % </th>
     </tr>"
   )
   for (j in 1:party.num[i]) {
     index <- sum(party.num[0:(i - 1)]) + j
     if (j == 1) {
-      td.s <- "<td align=\"left\"> <font color=\"red\">"
+      td.sl <- "<td align=\"left\"> <font color=\"red\">"
       td.sr <- "<td align=\"right\"> <font color=\"red\">"
       td.c <- "</font> </td>"
     } else {
-      td.s <- "<td align=\"left\">"
+      td.sl <- "<td align=\"left\">"
       td.sr <- "<td align=\"right\">"
       td.c <- "</td>"
     }
     popup[i] <- paste(
       popup[i],
       "<tr>",
-      td.s, result[index, 5], td.c,
-      td.s, result[index, 6], td.c,
-      td.s, result[index, 3], td.c,
+      td.sl, result[index, 5], td.c,
+      td.sl, result[index, 6], td.c,
+      td.sr, result[index, 3], td.c,
       td.sr, formatC(result[index, 4], digit = 1, format = "f"), td.c,
       "</tr>"
     )

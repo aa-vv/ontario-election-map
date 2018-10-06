@@ -44,23 +44,29 @@ spDecouple <- function(sp) {
 # @return sp - a sp object containing filtered polygons
 spExtract <- function(sp, filter) {
   for (i in 1:length(sp@polygons)) {
-    outer <- Filter(function(f){f@ringDir==filter}, sp@polygons[[i]]@Polygons)
+    outer <- Filter(function(f) {
+      f@ringDir == filter
+    }, sp@polygons[[i]]@Polygons)
     sp@polygons[[i]]@Polygons <- outer
   }
   return(sp)
 }
 # check if the polygons in an sp object contains each other
 # @param sp - an sp object
-# @return relation - a data.frame with index for 
+# @return relation - a data.frame with index for
 # contained polygon (inner) and its container (outer)
 spRelation <- function(sp) {
   spl <- spDecouple(sp)
   relation <- list()
   for (i in 1:length(spl)) {
-    relation[[i]] <- sapply(spl, function(x) {gContainsProperly(x, spl[[i]], byid = TRUE)})
+    relation[[i]] <- sapply(spl, function(x) {
+      gContainsProperly(x, spl[[i]], byid = TRUE)
+    })
   }
   inner <- which((sapply(relation, sum) > 0) == T)
-  outer <- sapply(relation[inner], function(x) {which(x == T)})
+  outer <- sapply(relation[inner], function(x) {
+    which(x == T)
+  })
   relation <- data.frame(inner, outer)
   return(relation)
 }
@@ -85,7 +91,7 @@ spDifference <- function(sp, inner, outer) {
 spFix <- function(sp, index, width) {
   spl <- spDecouple(sp)
   for (i in 1:length(index)) {
-    sp@polygons[[index[i]]] <- gBuffer(spl[[index[i]]], width=width[i])@polygons[[1]]
+    sp@polygons[[index[i]]] <- gBuffer(spl[[index[i]]], width = width[i])@polygons[[1]]
   }
   return(sp)
 }

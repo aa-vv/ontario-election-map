@@ -132,24 +132,24 @@ party.num <- table(result$district.id)[unique(result$district.id)]
 popup <- vector()
 for (i in 1:124) {
   popup[i] <- paste(
-    "Riding", result.win$district.id[i], ":", 
+    "Riding", result.win$district.id[i], ":",
     result.win$district.name[i], "<br> <br>",
     "<table style=\"width:100%\">
     <tr>
-    <th> Party </th>
-    <th> Candidate </th>
-    <th> Votes </th>
+    <th align=\"left\"> Party </th>
+    <th align=\"left\"> Candidate </th>
+    <th align=\"left\"> Votes </th>
     <th align=\"right\"> % </th>
     </tr>"
   )
   for (j in 1:party.num[i]) {
     index <- sum(party.num[0:(i - 1)]) + j
     if (j == 1) {
-      td.s <- "<td> <font color=\"red\">"
+      td.s <- "<td align=\"left\"> <font color=\"red\">"
       td.sr <- "<td align=\"right\"> <font color=\"red\">"
       td.c <- "</font> </td>"
     } else {
-      td.s <- "<td>"
+      td.s <- "<td align=\"left\">"
       td.sr <- "<td align=\"right\">"
       td.c <- "</td>"
     }

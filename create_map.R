@@ -121,6 +121,7 @@ ed.shape <- mutateType(ed.shape)
 # > Visualization
 # /
 
+party.color <- c(NDP = "orange", PCP = "blue", LIB = "red", GPO = "green")
 # create color options
 pal <- colorFactor(
   palette = c("green", "red", "orange", "blue"),
@@ -145,8 +146,8 @@ for (i in 1:124) {
   for (j in 1:party.num[i]) {
     index <- sum(party.num[0:(i - 1)]) + j
     if (j == 1) {
-      td.sl <- "<td align=\"left\"> <font color=\"red\">"
-      td.sr <- "<td align=\"right\"> <font color=\"red\">"
+      td.sl <- paste0("<td align=\"left\">", "<font color=\"", party.color[as.character(result[index, 5])], "\">")
+      td.sr <- paste0("<td align=\"right\">", "<font color=\"", party.color[as.character(result[index, 5])], "\">")
       td.c <- "</font> </td>"
     } else {
       td.sl <- "<td align=\"left\">"

@@ -55,15 +55,16 @@ if (!exists("tmp")) {
   result <- tmp
 }
 tmp <- result
-# name columns
+# name columns and mutate type
 col.names <- c("district.id", "district.name", "votes", "percentage", "party", "candidate")
 names(result) <- col.names
-# mutate type and order by district.name ascending and vote descending
 result <- mutateType(result)
-result <- result[order(result$district.name, -result$votes), ]
 # convert latin character and standardize name display
 result$district.name <- iconv(gsub("—", " - ", result$district.name), "latin1", "UTF-8")
 result$candidate <- sapply(iconv(result$candidate, "latin1", "UTF-8"), function(x) toTitleCase(tolower(x)))
+# order by district.name ascending and vote descending
+# " - " is replaced by " " in district.name for correct sorting for all sorting process
+result <- result[order(gsub(" - ", " ", result$district.name, -result$votes)), ]
 # get winning party data in each district
 result.win <- group_by(result, district.id) %>%
   summarize(
@@ -75,7 +76,7 @@ result.win <- group_by(result, district.id) %>%
   )
 names(result.win) <- col.names
 # order result.win by district.name ascending and vote descending
-result.win <- result.win[order(result.win$district.name, -result.win$votes), ]
+result.win <- result.win[order(gsub(" - ", " ", result.win$district.name), -result.win$votes), ]
 
 # \
 # > Shapes and Polygons
@@ -92,7 +93,7 @@ ed.shape <- sp::spTransform(ed.shape, proj)
 gpclibPermit()
 # merge polygons in the same district
 # this function coerces IDs into characters by default, numeric num causes incorrect order
-ed.shape.poly <- unionSpatialPolygons(ed.shape, ed.shape$district.name)
+ed.shape.poly <- unionSpatialPolygons(ed.shape, gsub(" - ", " ", ed.shape$district.name))
 # extract outer polygons
 ed.shape.poly <- spExtract(ed.shape.poly, 1)
 # check if the polygons contain each other
@@ -111,7 +112,7 @@ names(ed.shape.data) <- c("district.id")
 ed.shape.data <- right_join(result.win, ed.shape.data, by = "district.id")
 # mutate data type to get rid of redundant factor levels and order only by district.name
 ed.shape.data <- mutateType(ed.shape.data)
-ed.shape.data <- ed.shape.data[order(ed.shape.data$district.name), ]
+ed.shape.data <- ed.shape.data[order(gsub(" - ", " ", ed.shape.data$district.name)), ]
 # combine merged polygons and data into shape object
 ed.shape <- SpatialPolygonsDataFrame(ed.shape.poly, ed.shape.data, match.ID = F)
 # mutate data type to get rid of redundant factor levels
@@ -176,6 +177,9 @@ leaflet(ed.shape) %>%
     color = "#404040", weight = 0.5, smoothFactor = 0.99, opacity = 1,
     fillOpacity = ~percentage / 100, fillColor = ~pal(party),
     popup = popup, label = ~district.name,
+    popupOptions = popupOptions(
+      maxWidth = 225
+    ),
     highlightOptions = highlightOptions(
       color = "white", weight = 2, bringToFront = T
     )

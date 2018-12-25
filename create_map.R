@@ -5,6 +5,7 @@ library(rgdal)
 library(maptools)
 library(gpclib)
 library(leaflet)
+library(leaflet.extras)
 
 source("./functions.R")
 
@@ -171,12 +172,12 @@ for (i in 1:124) {
   popup[i] <- paste(popup[i], "</table>")
 }
 # visulization using leaflet
-leaflet(ed.shape) %>%
-  addTiles() %>%
+leaflet(data = ed.shape, options = leafletOptions(minZoom = 2, maxZoom = 18)) %>%
+  addProviderTiles(providers$Esri.WorldStreetMap) %>%
   addPolygons(
     color = "#404040", weight = 0.5, smoothFactor = 0.99, opacity = 1,
     fillOpacity = ~percentage / 100, fillColor = ~pal(party),
-    popup = popup, label = ~district.name,
+    popup = popup, label = ~district.name, group = "district",
     popupOptions = popupOptions(
       maxWidth = 225
     ),
@@ -185,8 +186,25 @@ leaflet(ed.shape) %>%
     )
   ) %>%
   addLegend(
-    position = "topright",
+    position = "bottomright",
     pal = pal, values = ~party,
     title = "Party",
     opacity = 0.5
+  ) %>%
+  addFullscreenControl() %>%
+  addResetMapButton() %>%
+  addSearchFeatures(
+    targetGroups = "district",
+    options = searchFeaturesOptions(
+      zoom = 12, openPopup = T, firstTipSubmit = T,
+      autoCollapse = T, hideMarkerOnCollapse = T,
+      textPlaceholder = "Enter district name...", position = "topright"
+    )
+  ) %>%
+  setView(lat = 49, lng = -86, zoom = 5) %>%
+  setMaxBounds(
+    lng1 = -180
+    , lat1 = -90
+    , lng2 = 200
+    , lat2 = 90
   )
